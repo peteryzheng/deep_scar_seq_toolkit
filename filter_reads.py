@@ -48,11 +48,14 @@ def clip_breakpoint(aln):
     else:
         clip_side = 'right'
         breakpoint = aln.reference_end
+    total_bases = sum([l for _, l in cigar])
+    # extra_bases flags CIGARs that deviate from a simple "one match + one clip" model.
     return {
         "largest_clip_length": largest_clip[1],
         "largest_match_length": largest_match[1],
         "clip_side": clip_side,
-        "breakpoint": breakpoint
+        "breakpoint": breakpoint,
+        "extra_bases": total_bases - largest_clip[1] - largest_match[1],
     }
 
 def extract_aln_core(aln):
@@ -144,31 +147,14 @@ for aln in tqdm(alns, desc='Annotating other alignment of the breakpoint and mat
         print(f"Mate not found: {e}")
 
 # %%
-# at the end, the dict contains the following keys:
-# read_name1, chr1, start1, end1, cigar1, read_number1, is_forward1, insert_size1, 
-# is_supplementary1, is_secondary1, mapping_quality1, has_SA1, sa_tag1, query_sequence1,
-# largest_clip_length1, largest_match_length1, clip_side1, breakpoint1, aln_obj1,
-# chr2, largest_clip_length2, largest_match_length2, clip_side2, breakpoint2,
-# read_name1_mate, chr_mate, start_mate, end_mate, cigar_mate, read_number_mate, is_forward_mate,
-# insert_size_mate, is_supplementary_mate, is_secondary_mate, mapping_quality_mate, has_SA_mate,
-# sa_tag_mate, query_sequence_mate
-
-# out of these, which ones do I really need?
-# I do need to keep information on the read name, but it's redundant to keep both read_name1 and read_name1_mate
-# we will first focus on information that will help us determine the structure of the SV
-# I do need to keep information on both breakpoints: chr1, breakpoint1, chr2, breakpoint2, is_forward1, is_forward2, chr_mate, start_mate, is_forward_mate
-# we will then focus on information that will help us filter low-quality alignments
-# I need to retain is_supplementary1, mapping_quality1, cigar1, is_supplementary2, mapping_quality2, cigar2
-# lastly we will then focus on information that will help us assemble the sequences later on
-# I need to keep alignment objects: aln_obj1, aln_obj2, aln_obj_mate
-# I will create a new dataframe with only these columns
-
 # Build a dataframe directly from alns (no filtered_alns list)
 filtered_alns_df = pd.DataFrame(alns)[
     [
         'read_name1',
-        'chr1', 'breakpoint1', 'is_forward1', 'insert_size1', 'is_supplementary1', 'mapping_quality1', 'cigar1', 'clip_side1',
-        'chr2', 'breakpoint2', 'is_forward2', 'insert_size2', 'is_supplementary2', 'mapping_quality2', 'cigar2', 'clip_side2',
+        'chr1', 'breakpoint1', 'is_forward1', 'insert_size1', 'is_supplementary1', 'mapping_quality1', 'cigar1', 
+        'clip_side1', 'largest_clip_length1', 'largest_match_length1', 'extra_bases1',
+        'chr2', 'breakpoint2', 'is_forward2', 'insert_size2', 'is_supplementary2', 'mapping_quality2', 'cigar2', 
+        'clip_side2', 'largest_clip_length2', 'largest_match_length2', 'extra_bases2',
         'chr_mate', 'start_mate', 'is_forward_mate', 'insert_size_mate', 'is_supplementary_mate', 'mapping_quality_mate', 'cigar_mate',
         'aln_obj1', 'aln_obj2', 'aln_obj_mate'
     ]
@@ -203,12 +189,73 @@ for _, row in filtered_alns_df.iterrows():
 filtered_alns_df['sv_type'] = sv_types
 print(filtered_alns_df['sv_type'].value_counts())
 filtered_alns_df[[
-    'read_name','chr1','breakpoint1','is_forward1','clip_side1',
-    'chr2','breakpoint2','is_forward2','clip_side2',
+    'read_name','chr1','breakpoint1','is_forward1','clip_side1', 'extra_bases1',
+    'chr2','breakpoint2','is_forward2','clip_side2', 'extra_bases2',
     'sv_type'
 ]][filtered_alns_df['sv_type'] == 'INV']
 
 
 # %%
-filtered_alns_df['aln_obj1'][0]
+def reverse_complement(seq):
+    complement = str.maketrans('ACGTacgt', 'TGCAtgca')
+    return seq.translate(complement)[::-1]
+
+# determine MH and INS 
+def junctional_features(row):
+    # MH/INS are computed from the primary alignment query sequence.
+    # extra_bases indicates cases where CIGAR complexity may reduce MH/INS confidence.
+    # first get the total read length
+    # but only get the proper alignment's read length because supplementary alignment are often hard clipped
+    # in which case the hard clipped query sequence is not retained in aln.query_sequence
+    if row['is_supplementary1']:
+        read_length = len(row['aln_obj2'].query_sequence)
+        primary_aln = 2
+    else:
+        read_length = len(row['aln_obj1'].query_sequence)
+        primary_aln = 1
+
+    match_sum = row['largest_match_length1'] + row['largest_match_length2']
+    mh_length = max(0, match_sum - read_length)
+    ins_length = max(0, read_length - match_sum)
+
+    primary_seq = row['aln_obj' + str(primary_aln)].query_sequence
+    primary_seq_strand = (
+        primary_seq if row['is_forward' + str(primary_aln)] else reverse_complement(primary_seq)
+    )
+    primary_clip_side = row['clip_side' + str(primary_aln)]
+    primary_match_length = row['largest_match_length' + str(primary_aln)]
+
+    def slice_near_break(seq, match_len, clip_side, length, kind):
+        if length <= 0:
+            return ''
+        if clip_side == 'right':
+            start = match_len - length if kind == 'mh' else match_len
+            end = match_len if kind == 'mh' else match_len + length
+            return seq[start:end]
+        start = -match_len if kind == 'mh' else -match_len - length
+        end = -match_len + length if kind == 'mh' else -match_len
+        return seq[start:end]
+
+    mh_seq = slice_near_break(primary_seq_strand, primary_match_length, primary_clip_side, mh_length, 'mh')
+    ins_seq = slice_near_break(primary_seq_strand, primary_match_length, primary_clip_side, ins_length, 'ins')
+
+    if primary_aln == 2 and row['is_forward1'] != row['is_forward2']:
+        mh_seq = reverse_complement(mh_seq)
+        ins_seq = reverse_complement(ins_seq)
+
+    return mh_length, ins_length, mh_seq, ins_seq, row['extra_bases' + str(primary_aln)]
+
+results = [junctional_features(row) for _, row in filtered_alns_df.iterrows()]
+if results:
+    mh_lengths, ins_lengths, mh_seqs, ins_seqs, extra_bases_list = map(list, zip(*results))
+else:
+    mh_lengths, ins_lengths, mh_seqs, ins_seqs, extra_bases_list = [], [], [], [], []
+
+filtered_alns_df['mh_length'] = mh_lengths
+filtered_alns_df['ins_length'] = ins_lengths
+filtered_alns_df['mh_seq'] = mh_seqs
+filtered_alns_df['ins_seq'] = ins_seqs
+filtered_alns_df['extra_bases'] = extra_bases_list
+filtered_alns_df[['read_name','mh_length','ins_length','mh_seq','ins_seq','extra_bases']]
+    
 # %%
