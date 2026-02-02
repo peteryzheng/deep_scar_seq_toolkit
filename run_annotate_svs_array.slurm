@@ -12,6 +12,15 @@ set -euo pipefail
 
 module load miniforge3
 
+if [[ $# -lt 3 ]]; then
+  echo "Usage: sbatch $0 <chrom> <breakpoint> <window>" >&2
+  exit 2
+fi
+
+CHROM="$1"
+BREAKPOINT="$2"
+WINDOW="$3"
+
 BAM_DIR="/data/beroukhim1/youyun/nti/data/DSS/run_260106"
 SCRIPT="/PHShome/yz762/DSS/code/deep_scar_seq_toolkit/annotate_SVs.py"
 RUN_DATE="${DSS_RUN_DATE:-$(date +%m%d%y)}"
@@ -37,7 +46,7 @@ fi
 
 BAM="${BAMS[$SLURM_ARRAY_TASK_ID]}"
 BASENAME="$(basename "${BAM}" .bam)"
-OUT_FILE="${OUT_DIR}/${BASENAME}.annotated.tsv"
+OUT_FILE="${OUT_DIR}/${BASENAME}.${CHROM}_${BREAKPOINT}_w${WINDOW}.annotated.tsv"
 
 start_ts=$(date +%s)
 start_human=$(date)
@@ -52,9 +61,9 @@ echo "Output: ${OUT_FILE}"
 
 time conda run -n dss python3 "${SCRIPT}" \
   --bam "${BAM}" \
-  --chrom chr2 \
-  --breakpoint 1152626 \
-  --window 5 \
+  --chrom "${CHROM}" \
+  --breakpoint "${BREAKPOINT}" \
+  --window "${WINDOW}" \
   --pysam_quiet \
   --out "${OUT_FILE}"
 
