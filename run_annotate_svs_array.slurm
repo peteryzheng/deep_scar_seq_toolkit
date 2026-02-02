@@ -11,7 +11,8 @@
 set -euo pipefail
 
 module load miniforge3
-source /PHShome/yz762/.conda/envs/dss/bin/activate
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate /PHShome/yz762/.conda/envs/dss
 
 BAM_DIR="/data/beroukhim1/youyun/nti/data/DSS/run_260106"
 SCRIPT="/PHShome/yz762/DSS/code/deep_scar_seq_toolkit/annotate_SVs.py"
