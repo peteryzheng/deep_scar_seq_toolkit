@@ -10,6 +10,9 @@
 
 set -euo pipefail
 
+module load miniforge3
+source /PHShome/yz762/.conda/envs/dss/bin/activate
+
 BAM_DIR="/data/beroukhim1/youyun/nti/data/DSS/run_260106"
 SCRIPT="/PHShome/yz762/DSS/code/deep_scar_seq_toolkit/annotate_SVs.py"
 RUN_DATE="${DSS_RUN_DATE:-$(date +%m%d%y)}"
