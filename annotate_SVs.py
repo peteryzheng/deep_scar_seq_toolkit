@@ -41,7 +41,7 @@ def parse_args():
     parser.add_argument(
         "--out",
         default="",
-        help="Optional output path for filtered_alns_df (CSV/TSV based on extension).",
+        help="Output file path (TSV). If no .tsv suffix is provided, it will be appended.",
     )
     parser.add_argument(
         "--pysam_quiet",
@@ -394,8 +394,12 @@ def main():
     filtered_alns_df = build_filtered_df(alns, args.include_mate)
     filtered_alns_df = add_sv_type(filtered_alns_df)
     filtered_alns_df = add_junctional_features(filtered_alns_df)
-    filtered_alns_df.to_csv(args.out + 'read_level_sv_events.tsv', sep="\t", index=False)
-    print(f"Wrote {len(filtered_alns_df)} rows to {args.out}")
+    if not args.out:
+        print("Error: --out is required and must be a TSV path.", file=sys.stderr)
+        sys.exit(2)
+    out_path = args.out if args.out.endswith(".tsv") else f"{args.out}.tsv"
+    filtered_alns_df.to_csv(out_path, sep="\t", index=False)
+    print(f"Wrote {len(filtered_alns_df)} rows to {out_path}")
     print(filtered_alns_df['sv_type'].value_counts())
 
 if __name__ == "__main__":
