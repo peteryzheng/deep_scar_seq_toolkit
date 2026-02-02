@@ -11,7 +11,6 @@
 set -euo pipefail
 
 module load miniforge3
-conda activate dss
 
 BAM_DIR="/data/beroukhim1/youyun/nti/data/DSS/run_260106"
 SCRIPT="/PHShome/yz762/DSS/code/deep_scar_seq_toolkit/annotate_SVs.py"
@@ -51,7 +50,7 @@ echo "BAM: ${BAM}"
 echo "BAM size: ${bam_size_human} (${bam_bytes} bytes)"
 echo "Output: ${OUT_FILE}"
 
-time python3 "${SCRIPT}" \
+time conda run -n dss python3 "${SCRIPT}" \
   --bam "${BAM}" \
   --chrom chr2 \
   --breakpoint 1152626 \
