@@ -1,4 +1,4 @@
-# deep_scar_seq_toolkit
+# Deep Scar Seq Toolkit
 Deep scar seq analysis toolkit for annotating split reads near a CRISPR breakpoint
 and summarizing structural variation (SV) features.
 
