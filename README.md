@@ -27,7 +27,7 @@ packaging config later and run `pip install -e .`. For now, running the CLI
 scripts directly is sufficient.
 
 ## Usage
-Annotate SVs for one BAM:
+1. Annotate SVs for one BAM:
 ```bash
 python scripts/annotate_svs.py \\
   --bam /path/to/sample.bam \\
@@ -36,14 +36,21 @@ python scripts/annotate_svs.py \\
   --window 5 \\
   --out /path/to/output.annotated.tsv
 ```
-
-Plot SV distributions for a batch of annotated TSVs:
+  
+2. Aggregate SVs for one annotated TSV:
+```bash
+python scripts/aggregate_svs.py \\
+  --annotated /path/to/output.annotated.tsv \\
+  --out /path/to/output.aggregated.tsv
+```
+3. Plot SV distributions for a batch of annotated TSVs:
 ```bash
 python scratch/plotting/plot_sv_distributions.py \\
   --input-dir data/dss_020226 \\
   --pattern '*chr2_1152626_w5*.annotated.tsv' \\
   --output-dir sv_plots_chr2_1152626_w5
 ```
+
 
 ## Development workflow
 - Start new ideas in `scratch/` (e.g., `scratch/analysis` or `scratch/validation`).
