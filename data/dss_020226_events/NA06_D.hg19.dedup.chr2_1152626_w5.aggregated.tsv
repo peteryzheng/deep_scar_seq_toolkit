@@ -1,0 +1,2 @@
+chr1	breakpoint1	chr2	breakpoint2	clip_side1	clip_side2	sv_type	mh_seq	ins_seq	read_count	frag_count	mapq1_mean	match1_mean	mapq2_mean	match2_mean	mh_length	ins_length	aliquot	sample
+chr2	1152628	chr2	1152508	right	left	DUP	GAGG		1	1	60.0	47.0	60.0	107.0	4	0	NA06_D	NA06

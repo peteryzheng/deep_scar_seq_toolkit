@@ -1,0 +1,9 @@
+chr1	breakpoint1	chr2	breakpoint2	clip_side1	clip_side2	sv_type	mh_seq	ins_seq	read_count	frag_count	mapq1_mean	match1_mean	mapq2_mean	match2_mean	mh_length	ins_length	aliquot	sample
+chr2	1153053	chr15	79043518	right	left	TRA	GGCACCGC		1	1	38.0	65.0	38.0	93.0	8	0	NA06_J	NA06
+chr2	1153053	chr20	51673626	right	left	TRA	CCCCTGCACCGC		4	2	60.0	63.0	52.5	52.0	12	0	NA06_J	NA06
+chr2	1153054	chr4	176118652	right	right	TRA	CTCTGGGGG		2	2	60.0	64.0	60.0	78.0	9	0	NA06_J	NA06
+chr2	1153054	chr4	176118652	right	right	TRA	GGCACCGCG		3	3	60.0	64.33333333333333	60.0	78.0	9	0	NA06_J	NA06
+chr2	1153054	chr4	176118652	right	right	TRA	TCTGGGGGC		1	1	60.0	65.0	60.0	78.0	9	0	NA06_J	NA06
+chr2	1153054	chr5	25747730	right	right	TRA	GGCACCGCG		4	2	60.0	64.5	60.0	34.0	9	0	NA06_J	NA06
+chr2	1153057	chr10	102770630	right	left	TRA	CCGCGGCT		2	1	60.0	68.0	60.0	64.0	8	0	NA06_J	NA06
+chr2	1153057	chr7	129439785	right	right	TRA	GGCACCGCGGCT		1	1	60.0	68.0	60.0	37.0	12	0	NA06_J	NA06
