@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deep-scar-seq-toolkit"
+version = "0.1.0"
+description = "Deep scar seq analysis toolkit for annotating split reads and SV features."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+authors = [
+  {name = "Deep Scar Seq Toolkit contributors"}
+]
+
+dependencies = [
+  "pandas",
+  "pysam",
+  "tqdm",
+]
+
+[project.optional-dependencies]
+analysis = [
+  "numpy",
+  "matplotlib",
+  "seaborn",
+  "pycirclize",
+]
+
+[project.scripts]
+
+[tool.setuptools.packages.find]
+where = ["src"]

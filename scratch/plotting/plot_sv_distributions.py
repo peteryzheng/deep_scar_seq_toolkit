@@ -42,6 +42,15 @@ def load_events(files):
                     "ins_seq",
                     "mh_length",
                     "ins_length",
+                    "mapping_quality1",
+                    "mapping_quality2",
+                    "largest_match_length1",
+                    "largest_match_length2",
+                    "largest_clip_length1",
+                    "largest_clip_length2",
+                    "is_supplementary1",
+                    "extra_bases1",
+                    "extra_bases2"
                 ],
                 dtype={
                     "sv_type": "string",
@@ -65,6 +74,16 @@ def load_events(files):
     events["ins_seq"] = events["ins_seq"].fillna("")
     events["mh_length"] = pd.to_numeric(events["mh_length"], errors="coerce").fillna(0).astype(int)
     events["ins_length"] = pd.to_numeric(events["ins_length"], errors="coerce").fillna(0).astype(int)
+    
+    # filter events both having mapping quality >= 5 and largest match length >= 30 on both sides
+    events = events[
+        (events["mapping_quality1"] >= 5) &
+        (events["mapping_quality2"] >= 5) &
+        (events["largest_match_length1"] >= 30) &
+        (events["largest_match_length2"] >= 30) &
+        (events["extra_bases1"] <= 0) &
+        (events["extra_bases2"] <= 0)
+    ]
 
     unique_events = (
         events.fillna("")

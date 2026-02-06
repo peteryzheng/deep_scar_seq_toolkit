@@ -1,52 +1,11 @@
 #!/usr/bin/env python3
 """Annotate split reads around a breakpoint and derive SV features."""
 
-import argparse
-import sys
-
 import pandas as pd
 import pysam
 from tqdm import tqdm
 
 from .config import DEFAULT_INCLUDE_MATE, DEFAULT_PYSAM_QUIET, DEFAULT_WINDOW
-
-
-def parse_args(argv=None):
-    parser = argparse.ArgumentParser(
-        description="Scan split reads around a breakpoint and annotate SV features."
-    )
-    parser.add_argument("--bam", required=True, help="Path to input BAM file.")
-    parser.add_argument("--chrom", required=True, help="Chromosome to scan (e.g., chr2).")
-    parser.add_argument(
-        "--breakpoint",
-        type=int,
-        required=True,
-        help="Breakpoint position (0-based, half-open).",
-    )
-    parser.add_argument(
-        "--window",
-        type=int,
-        default=DEFAULT_WINDOW,
-        help="Search window around breakpoint (bp).",
-    )
-    parser.add_argument(
-        "--out",
-        default="",
-        help="Output file path (TSV). If no .tsv suffix is provided, it will be appended.",
-    )
-    parser.add_argument(
-        "--pysam_quiet",
-        action="store_true",
-        default=DEFAULT_PYSAM_QUIET,
-        help="Silence pysam/htslib warnings (e.g., BAM index timestamps).",
-    )
-    parser.add_argument(
-        "--include_mate",
-        action="store_true",
-        default=DEFAULT_INCLUDE_MATE,
-        help="Include mate read alignment fields (slower).",
-    )
-    return parser.parse_args(argv)
 
 
 def is_split(aln):
@@ -352,27 +311,20 @@ def add_junctional_features(filtered_alns_df):
     return filtered_alns_df
 
 
-def main(argv=None):
-    args = parse_args(argv)
-    if args.pysam_quiet:
+def annotate_bam(
+    bam_path,
+    chrom,
+    breakpoint,
+    window=DEFAULT_WINDOW,
+    include_mate=DEFAULT_INCLUDE_MATE,
+    pysam_quiet=DEFAULT_PYSAM_QUIET,
+):
+    if pysam_quiet:
         pysam.set_verbosity(0)
-    alns = run_pipeline(
-        args.bam, args.chrom, args.breakpoint, args.window, args.include_mate
-    )
+    alns = run_pipeline(bam_path, chrom, breakpoint, window, include_mate)
     if not alns:
-        print("No split reads found near the specified breakpoint.")
-        sys.exit(0)
-    filtered_alns_df = build_filtered_df(alns, args.include_mate)
+        return pd.DataFrame()
+    filtered_alns_df = build_filtered_df(alns, include_mate)
     filtered_alns_df = add_sv_type(filtered_alns_df)
     filtered_alns_df = add_junctional_features(filtered_alns_df)
-    if not args.out:
-        print("Error: --out is required and must be a TSV path.", file=sys.stderr)
-        sys.exit(2)
-    out_path = args.out if args.out.endswith(".tsv") else f"{args.out}.tsv"
-    filtered_alns_df.to_csv(out_path, sep="\t", index=False)
-    print(f"Wrote {len(filtered_alns_df)} rows to {out_path}")
-    print(filtered_alns_df["sv_type"].value_counts())
-
-
-if __name__ == "__main__":
-    main()
+    return filtered_alns_df
