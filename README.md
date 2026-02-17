@@ -59,10 +59,22 @@ Annotated TSVs now include UMI metadata:
 - `umi_missing`: `True` when no canonical UMI is available
 - `umi_mi`: raw `MI` tag when present (for posterity)
 
+Duplicate handling is always on during annotation: duplicate-marked reads are
+excluded before writing output rows. Annotated TSVs retain duplicate metadata
+for QC:
+- `is_duplicate`: effective duplicate status used for filtering
+- `is_duplicate_raw`: duplicate flag on the junction-overlapping alignment
+- `duplicate_source`: how duplicate status was derived (`self_primary`,
+  `resolved_primary`, or `self_fallback`)
+
 Aggregated TSVs now include UMI summary metrics:
 - `umi_count`: unique non-empty UMIs per event after filtering
 - `umi_missing_read_count`: number of post-filter reads missing canonical UMI
 - `umi_coverage`: `1 - umi_missing_read_count / read_count`
+
+When aggregating legacy annotated TSVs that do not contain duplicate metadata,
+aggregation remains compatible and emits a warning that duplicate-aware
+filtering could not be re-applied.
 
 
 ## Development workflow

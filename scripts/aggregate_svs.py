@@ -68,6 +68,9 @@ def main(argv=None):
             "umi_source_tag": "string",
             "umi_missing": "string",
             "umi_mi": "string",
+            "is_duplicate": "string",
+            "is_duplicate_raw": "string",
+            "duplicate_source": "string",
         },
     )
     aggregated = aggregate_reads(

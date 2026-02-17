@@ -112,40 +112,141 @@ def extract_umi_metadata(aln, umi_tag_priority):
     }
 
 
+def parse_sa_entries(sa_tag):
+    sa_entries = []
+    for entry in sa_tag.split(";"):
+        if not entry:
+            continue
+        fields = entry.split(",")
+        if len(fields) < 6:
+            continue
+        try:
+            sa_entries.append(
+                {
+                    "chr": fields[0],
+                    "start": int(fields[1]) - 1,
+                    "is_forward": fields[2] == "+",
+                    "cigar": fields[3],
+                    "mapping_quality": int(fields[4]),
+                }
+            )
+        except ValueError:
+            continue
+    return sa_entries
+
+
 def parse_sa_tag(sa_tag):
-    entry = sa_tag.split(";")[0]
-    fields = entry.split(",")
-    if len(fields) < 6:
+    sa_entries = parse_sa_entries(sa_tag)
+    if not sa_entries:
         return None
+    # max() is stable, so ties keep the first SA entry.
+    return max(sa_entries, key=lambda entry: entry["mapping_quality"])
+
+
+def find_other_alignment(
+    sa_tag,
+    query_name,
+    is_read1,
+    is_supplementary,
+    bam,
+    require_primary=False,
+):
+    best_aln = None
+    best_mapq = -1
+    seen = set()
+    for sa_info in parse_sa_entries(sa_tag):
+        region = f"{sa_info['chr']}:{sa_info['start']}-{sa_info['start'] + 1}"
+        for aln in bam.fetch(region=region):
+            if aln.query_name != query_name or aln.is_read1 != is_read1:
+                continue
+            if aln.is_secondary:
+                continue
+            if aln.is_supplementary == is_supplementary:
+                continue
+            if require_primary and aln.is_supplementary:
+                continue
+            aln_key = (
+                aln.reference_id,
+                aln.reference_start,
+                aln.cigarstring,
+                aln.is_supplementary,
+                aln.mapping_quality,
+                aln.flag,
+            )
+            if aln_key in seen:
+                continue
+            seen.add(aln_key)
+            # Tie-break only by MAPQ; for equal MAPQ keep the first-seen alignment.
+            if best_aln is None or aln.mapping_quality > best_mapq:
+                best_aln = aln
+                best_mapq = aln.mapping_quality
+    return best_aln
+
+
+def resolve_primary_alignment(aln, bam):
+    if not aln.has_tag("SA"):
+        return None
+    return find_other_alignment(
+        aln.get_tag("SA"),
+        aln.query_name,
+        aln.is_read1,
+        aln.is_supplementary,
+        bam,
+        require_primary=True,
+    )
+
+
+def resolve_duplicate_status(aln, bam):
+    raw_duplicate = bool(aln.is_duplicate)
+    if not aln.is_supplementary:
+        return {
+            "is_duplicate": raw_duplicate,
+            "is_duplicate_raw": raw_duplicate,
+            "duplicate_source": "self_primary",
+            "primary_alignment": aln,
+        }
+
+    primary_aln = resolve_primary_alignment(aln, bam)
+    if primary_aln is None:
+        return {
+            "is_duplicate": raw_duplicate,
+            "is_duplicate_raw": raw_duplicate,
+            "duplicate_source": "self_fallback",
+            "primary_alignment": None,
+        }
+
     return {
-        "chr": fields[0],
-        "start": int(fields[1]) - 1,
-        "is_forward": fields[2] == "+",
-        "cigar": fields[3],
-        "mapping_quality": int(fields[4]),
+        "is_duplicate": bool(primary_aln.is_duplicate),
+        "is_duplicate_raw": raw_duplicate,
+        "duplicate_source": "resolved_primary",
+        "primary_alignment": primary_aln,
     }
 
 
-def find_other_alignment(sa_tag, query_name, is_read1, is_supplementary, bam):
-    sa_fields = sa_tag.split(",")
-    sa_chrom = sa_fields[0]
-    sa_pos = int(sa_fields[1]) - 1
+def print_duplicate_summary(duplicate_stats):
+    candidate_total = int(duplicate_stats.get("candidate_total", 0))
+    excluded_duplicates = int(duplicate_stats.get("excluded_duplicates", 0))
+    excluded_resolved_primary = int(duplicate_stats.get("excluded_resolved_primary", 0))
+    supp_fallback_count = int(duplicate_stats.get("supp_fallback_count", 0))
+    retained = int(duplicate_stats.get("retained", candidate_total - excluded_duplicates))
 
-    for aln in bam.fetch(region=f"{sa_chrom}:{sa_pos}-{sa_pos + 1}"):
-        if (
-            aln.query_name == query_name
-            and aln.is_read1 == is_read1
-            and (aln.is_supplementary != is_supplementary)
-        ):
-            return aln
-    return None
+    excluded_pct = (excluded_duplicates / candidate_total) if candidate_total else 0.0
+    fallback_pct = (supp_fallback_count / candidate_total) if candidate_total else 0.0
+    print(
+        "Duplicate filter | "
+        f"candidates={candidate_total} "
+        f"excluded={excluded_duplicates} ({excluded_pct:.1%}) "
+        f"excluded_resolved_primary={excluded_resolved_primary} "
+        f"supp_fallback={supp_fallback_count} ({fallback_pct:.1%}) "
+        f"retained={retained}"
+    )
 
 
 def run_pipeline(bam_path, chrom, breakpoint, window, include_mate, umi_tag_priority):
     bam = pysam.AlignmentFile(bam_path, "rb")
     region = f"{chrom}:{breakpoint}-{breakpoint}"
 
-    alns = []
+    candidate_alns = []
     for aln in tqdm(bam.fetch(region=region), desc="Scanning split reads"):
         if is_split(aln):
             bp1_info = clip_breakpoint(aln.cigartuples, aln.reference_start)
@@ -160,44 +261,69 @@ def run_pipeline(bam_path, chrom, breakpoint, window, include_mate, umi_tag_prio
                     "aln_obj": aln,
                 }
                 new_aln_dict_1 = {k + "1": v for k, v in new_aln_dict.items()}
-                alns.append(new_aln_dict_1)
+                candidate_alns.append(new_aln_dict_1)
 
-    if not alns:
-        return alns
-
+    duplicate_stats = Counter()
+    alns = []
     sa_time = 0.0
     mate_time = 0.0
-    for aln in tqdm(alns, desc="Annotating other alignment of the breakpoint"):
+    for aln in tqdm(
+        candidate_alns,
+        desc="Resolving duplicate status and annotating other alignment",
+    ):
+        duplicate_stats["candidate_total"] += 1
         aln_obj1 = aln["aln_obj1"]
+        duplicate_info = resolve_duplicate_status(aln_obj1, bam)
+        aln.update(
+            {
+                "is_duplicate1": duplicate_info["is_duplicate"],
+                "is_duplicate_raw1": duplicate_info["is_duplicate_raw"],
+                "duplicate_source1": duplicate_info["duplicate_source"],
+                "primary_aln_obj1": duplicate_info["primary_alignment"],
+            }
+        )
+        if duplicate_info["duplicate_source"] == "self_fallback":
+            duplicate_stats["supp_fallback_count"] += 1
+        if duplicate_info["is_duplicate"]:
+            duplicate_stats["excluded_duplicates"] += 1
+            if duplicate_info["duplicate_source"] == "resolved_primary":
+                duplicate_stats["excluded_resolved_primary"] += 1
+            continue
+
         if aln_obj1.has_tag("SA"):
             sa_tag = aln_obj1.get_tag("SA")
-            sa_info = parse_sa_tag(sa_tag)
-            if sa_info is None:
-                continue
-            cigar2_tuples = parse_cigar_tuples(sa_info["cigar"])
-            bp2_info = clip_breakpoint(cigar2_tuples, sa_info["start"])
-            new_aln_dict_2 = {
-                "chr": sa_info["chr"],
-                "start": sa_info["start"],
-                "is_forward": sa_info["is_forward"],
-                "cigar": sa_info["cigar"],
-                "mapping_quality": sa_info["mapping_quality"],
-                **bp2_info,
-            }
-            new_aln_dict_2 = {k + "2": v for k, v in new_aln_dict_2.items()}
-            aln.update(new_aln_dict_2)
             if aln_obj1.is_supplementary:
-                t0 = pd.Timestamp.now()
-                other_aln = find_other_alignment(
-                    sa_tag,
-                    aln["read_name1"],
-                    aln["read_number1"],
-                    aln["is_supplementary1"],
-                    bam,
-                )
-                if other_aln is not None:
-                    aln["query_sequence1"] = other_aln.query_sequence
-                sa_time += (pd.Timestamp.now() - t0).total_seconds()
+                primary_aln = aln.get("primary_aln_obj1")
+                if primary_aln is not None:
+                    bp2_info = clip_breakpoint(primary_aln.cigartuples, primary_aln.reference_start)
+                    if bp2_info is not None:
+                        new_aln_dict_2 = {
+                            "chr": primary_aln.reference_name,
+                            "start": primary_aln.reference_start,
+                            "is_forward": primary_aln.is_forward,
+                            "cigar": primary_aln.cigarstring,
+                            "mapping_quality": primary_aln.mapping_quality,
+                            **bp2_info,
+                        }
+                        new_aln_dict_2 = {k + "2": v for k, v in new_aln_dict_2.items()}
+                        aln.update(new_aln_dict_2)
+                    aln["query_sequence1"] = primary_aln.query_sequence
+            else:
+                sa_info = parse_sa_tag(sa_tag)
+                if sa_info is not None:
+                    cigar2_tuples = parse_cigar_tuples(sa_info["cigar"])
+                    bp2_info = clip_breakpoint(cigar2_tuples, sa_info["start"])
+                    if bp2_info is not None:
+                        new_aln_dict_2 = {
+                            "chr": sa_info["chr"],
+                            "start": sa_info["start"],
+                            "is_forward": sa_info["is_forward"],
+                            "cigar": sa_info["cigar"],
+                            "mapping_quality": sa_info["mapping_quality"],
+                            **bp2_info,
+                        }
+                        new_aln_dict_2 = {k + "2": v for k, v in new_aln_dict_2.items()}
+                        aln.update(new_aln_dict_2)
         if include_mate:
             try:
                 t1 = pd.Timestamp.now()
@@ -209,6 +335,13 @@ def run_pipeline(bam_path, chrom, breakpoint, window, include_mate, umi_tag_prio
             except ValueError as e:
                 print(f"Mate not found: {e}")
             mate_time += (pd.Timestamp.now() - t1).total_seconds()
+        alns.append(aln)
+
+    duplicate_stats["retained"] = len(alns)
+    print_duplicate_summary(duplicate_stats)
+
+    if not alns:
+        return alns
 
     print(f"annotate breakdown | SA: {sa_time:.2f}s | mate: {mate_time:.2f}s")
     return alns
@@ -234,6 +367,9 @@ def build_filtered_df(alns, include_mate):
         "umi_source_tag1",
         "umi_missing1",
         "umi_mi1",
+        "is_duplicate1",
+        "is_duplicate_raw1",
+        "duplicate_source1",
         "chr2",
         "start2",
         "breakpoint2",
@@ -266,6 +402,9 @@ def build_filtered_df(alns, include_mate):
             "umi_source_tag1": "umi_source_tag",
             "umi_missing1": "umi_missing",
             "umi_mi1": "umi_mi",
+            "is_duplicate1": "is_duplicate",
+            "is_duplicate_raw1": "is_duplicate_raw",
+            "duplicate_source1": "duplicate_source",
         }
     )
 

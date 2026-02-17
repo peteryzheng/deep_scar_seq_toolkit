@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Aggregate annotated SV TSVs into unique event counts."""
 
+import warnings
+
 import pandas as pd
 
 DEFAULT_MIN_MAPQ = 5
@@ -35,7 +37,12 @@ OPTIONAL_UMI_COLUMNS = [
     "umi_missing",
     "umi_mi",
 ]
-READ_EVENT_COLUMNS = EXPECTED_EVENT_COLUMNS + OPTIONAL_UMI_COLUMNS
+OPTIONAL_DUPLICATE_COLUMNS = [
+    "is_duplicate",
+    "is_duplicate_raw",
+    "duplicate_source",
+]
+READ_EVENT_COLUMNS = EXPECTED_EVENT_COLUMNS + OPTIONAL_UMI_COLUMNS + OPTIONAL_DUPLICATE_COLUMNS
 
 
 def load_events(events):
@@ -44,7 +51,9 @@ def load_events(events):
         missing_str = ", ".join(missing)
         raise ValueError(f"Missing expected columns: {missing_str}")
     selected_columns = EXPECTED_EVENT_COLUMNS + [
-        col for col in OPTIONAL_UMI_COLUMNS if col in events.columns
+        col
+        for col in OPTIONAL_UMI_COLUMNS + OPTIONAL_DUPLICATE_COLUMNS
+        if col in events.columns
     ]
     return events[selected_columns].copy()
 
@@ -90,6 +99,21 @@ def clean_events(events):
     else:
         events["umi_mi"] = events["umi_mi"].fillna("").astype(str)
 
+    if "is_duplicate" not in events.columns:
+        events["is_duplicate"] = False
+    else:
+        events["is_duplicate"] = _coerce_bool(events["is_duplicate"])
+
+    if "is_duplicate_raw" not in events.columns:
+        events["is_duplicate_raw"] = events["is_duplicate"]
+    else:
+        events["is_duplicate_raw"] = _coerce_bool(events["is_duplicate_raw"])
+
+    if "duplicate_source" not in events.columns:
+        events["duplicate_source"] = ""
+    else:
+        events["duplicate_source"] = events["duplicate_source"].fillna("").astype(str)
+
     return events
 
 
@@ -101,6 +125,7 @@ def filter_events(events, min_mapq, min_match_length, max_extra_bases):
         & (events["largest_match_length2"] >= min_match_length)
         & (events["extra_bases1"] <= max_extra_bases)
         & (events["extra_bases2"] <= max_extra_bases)
+        & (~events["is_duplicate"])
     ]
 
 
@@ -157,6 +182,15 @@ def aggregate_reads(
     max_extra_bases=DEFAULT_MAX_EXTRA_BASES,
 ):
     events = load_events(events)
+    missing_duplicate_columns = [
+        col for col in OPTIONAL_DUPLICATE_COLUMNS if col not in events.columns
+    ]
+    if missing_duplicate_columns:
+        warnings.warn(
+            "Legacy annotated TSV: duplicate-aware filtering metadata missing; relying on upstream deduplication.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
     events = clean_events(events)
     events = filter_events(events, min_mapq, min_match_length, max_extra_bases)
     return aggregate_events(events)
