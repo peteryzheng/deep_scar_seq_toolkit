@@ -1,4 +1,4 @@
-#!/home/yz762/bin/zsh -l
+#!/bin/bash -l
 #$ -N annotate_svs
 #$ -cwd
 #$ -l h_rt=02:00:00
@@ -9,8 +9,6 @@
 #$ -e /mnt/storage/dept/medonc/beroukhim/youyun/nti/code/deep_scar_seq_toolkit/scripts/outputs/$JOB_NAME_$JOB_ID_$TASK_ID.err
 
 set -euo pipefail
-
-source /home/yz762/.zshrc
 
 # Example:
 #   qsub scripts/run_annotate_svs_array.sge chr2 1153081 5
