@@ -32,12 +32,11 @@ SCRIPT="/mnt/storage/dept/medonc/beroukhim/youyun/nti/code/deep_scar_seq_toolkit
 
 mkdir -p "${OUT_DIR}"
 
-shopt -s nullglob
-BAMS=("${BAM_DIR}"/*.bam)
-if [[ ${#BAMS[@]} -eq 0 ]]; then
-  echo "No BAMs found in ${BAM_DIR}" >&2
-  exit 1
-fi
+BAMS=()
+for f in "${BAM_DIR}"/*.bam; do
+  [ -e "$f" ] || break
+  BAMS+=("$f")
+done
 
 if [[ -z "${SGE_TASK_ID:-}" ]]; then
   echo "SGE_TASK_ID is not set. This script is meant for an SGE job array." >&2
