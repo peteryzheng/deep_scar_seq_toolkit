@@ -1,4 +1,4 @@
-#!~/bin/zsh -l
+#!/home/yz762/bin/zsh -l
 #$ -N annotate_svs
 #$ -cwd
 #$ -l h_rt=02:00:00
