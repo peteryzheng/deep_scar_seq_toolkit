@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 """Annotate split reads around a breakpoint and derive SV features."""
 
+from collections import Counter
+
 import pandas as pd
 import pysam
 from tqdm import tqdm
 
-from .config import DEFAULT_INCLUDE_MATE, DEFAULT_PYSAM_QUIET, DEFAULT_WINDOW
+from .config import (
+    DEFAULT_INCLUDE_MATE,
+    DEFAULT_PYSAM_QUIET,
+    DEFAULT_UMI_TAG_PRIORITY,
+    DEFAULT_WINDOW,
+)
 
 
 def is_split(aln):
@@ -81,6 +88,30 @@ def extract_aln_core(aln):
     }
 
 
+def extract_umi_metadata(aln, umi_tag_priority):
+    canonical_umi = ""
+    source_tag = ""
+    for tag in umi_tag_priority:
+        if not aln.has_tag(tag):
+            continue
+        value = aln.get_tag(tag)
+        if value is None:
+            continue
+        value_str = str(value)
+        if not value_str:
+            continue
+        canonical_umi = value_str
+        source_tag = tag
+        break
+    umi_mi = str(aln.get_tag("MI")) if aln.has_tag("MI") else ""
+    return {
+        "umi": canonical_umi,
+        "umi_source_tag": source_tag,
+        "umi_missing": canonical_umi == "",
+        "umi_mi": umi_mi,
+    }
+
+
 def parse_sa_tag(sa_tag):
     entry = sa_tag.split(";")[0]
     fields = entry.split(",")
@@ -110,7 +141,7 @@ def find_other_alignment(sa_tag, query_name, is_read1, is_supplementary, bam):
     return None
 
 
-def run_pipeline(bam_path, chrom, breakpoint, window, include_mate):
+def run_pipeline(bam_path, chrom, breakpoint, window, include_mate, umi_tag_priority):
     bam = pysam.AlignmentFile(bam_path, "rb")
     region = f"{chrom}:{breakpoint}-{breakpoint}"
 
@@ -123,6 +154,7 @@ def run_pipeline(bam_path, chrom, breakpoint, window, include_mate):
             if abs(bp1_info["breakpoint"] - breakpoint) <= window:
                 new_aln_dict = {
                     **extract_aln_core(aln),
+                    **extract_umi_metadata(aln, umi_tag_priority),
                     **bp1_info,
                     "read_number": aln.is_read1,
                     "aln_obj": aln,
@@ -198,6 +230,10 @@ def build_filtered_df(alns, include_mate):
         "largest_match_length1",
         "extra_bases1",
         "query_sequence1",
+        "umi1",
+        "umi_source_tag1",
+        "umi_missing1",
+        "umi_mi1",
         "chr2",
         "start2",
         "breakpoint2",
@@ -226,6 +262,10 @@ def build_filtered_df(alns, include_mate):
             "read_number1": "read_number",
             "insert_size1": "insert_size",
             "query_sequence1": "query_sequence",
+            "umi1": "umi",
+            "umi_source_tag1": "umi_source_tag",
+            "umi_missing1": "umi_missing",
+            "umi_mi1": "umi_mi",
         }
     )
 
@@ -311,6 +351,23 @@ def add_junctional_features(filtered_alns_df):
     return filtered_alns_df
 
 
+def print_umi_summary(filtered_alns_df):
+    if filtered_alns_df.empty:
+        return
+    tag_counts = Counter(filtered_alns_df["umi_source_tag"])
+    total_reads = len(filtered_alns_df)
+    missing_count = int(filtered_alns_df["umi_missing"].sum())
+    rx_count = int(tag_counts.get("RX", 0))
+    ur_count = int(tag_counts.get("UR", 0))
+    print(
+        "UMI tags | "
+        f"total={total_reads} "
+        f"RX={rx_count} ({rx_count / total_reads:.1%}) "
+        f"UR={ur_count} ({ur_count / total_reads:.1%}) "
+        f"missing={missing_count} ({missing_count / total_reads:.1%})"
+    )
+
+
 def annotate_bam(
     bam_path,
     chrom,
@@ -318,13 +375,27 @@ def annotate_bam(
     window=DEFAULT_WINDOW,
     include_mate=DEFAULT_INCLUDE_MATE,
     pysam_quiet=DEFAULT_PYSAM_QUIET,
+    umi_tag_priority=DEFAULT_UMI_TAG_PRIORITY,
 ):
+    umi_tag_priority = tuple(
+        str(tag).strip().upper() for tag in umi_tag_priority if str(tag).strip()
+    )
+    if not umi_tag_priority:
+        raise ValueError("umi_tag_priority must contain at least one SAM tag.")
     if pysam_quiet:
         pysam.set_verbosity(0)
-    alns = run_pipeline(bam_path, chrom, breakpoint, window, include_mate)
+    alns = run_pipeline(
+        bam_path,
+        chrom,
+        breakpoint,
+        window,
+        include_mate,
+        umi_tag_priority,
+    )
     if not alns:
         return pd.DataFrame()
     filtered_alns_df = build_filtered_df(alns, include_mate)
     filtered_alns_df = add_sv_type(filtered_alns_df)
     filtered_alns_df = add_junctional_features(filtered_alns_df)
+    print_umi_summary(filtered_alns_df)
     return filtered_alns_df

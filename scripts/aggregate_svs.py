@@ -9,7 +9,7 @@ from deep_scar_seq_toolkit.aggregate import (
     DEFAULT_MAX_EXTRA_BASES,
     DEFAULT_MIN_MAPQ,
     DEFAULT_MIN_MATCH,
-    EXPECTED_EVENT_COLUMNS,
+    READ_EVENT_COLUMNS,
     aggregate_reads,
 )
 
@@ -57,13 +57,17 @@ def main(argv=None):
     events = pd.read_csv(
         args.annotated,
         sep="\t",
-        usecols=EXPECTED_EVENT_COLUMNS,
+        usecols=lambda col: col in READ_EVENT_COLUMNS,
         dtype={
             "sv_type": "string",
             "mh_seq": "string",
             "ins_seq": "string",
             "mh_length": "string",
             "ins_length": "string",
+            "umi": "string",
+            "umi_source_tag": "string",
+            "umi_missing": "string",
+            "umi_mi": "string",
         },
     )
     aggregated = aggregate_reads(

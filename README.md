@@ -34,6 +34,7 @@ python scripts/annotate_svs.py \\
   --chrom chr2 \\
   --breakpoint 1152626 \\
   --window 5 \\
+  --umi-tags RX,UR \\
   --out /path/to/output.annotated.tsv
 ```
   
@@ -50,6 +51,18 @@ python scratch/plotting/plot_sv_distributions.py \\
   --pattern '*chr2_1152626_w5*.annotated.tsv' \\
   --output-dir sv_plots_chr2_1152626_w5
 ```
+
+## Output columns
+Annotated TSVs now include UMI metadata:
+- `umi`: canonical UMI chosen by tag priority (default `RX,UR`)
+- `umi_source_tag`: tag used for `umi` (`RX`, `UR`, or empty)
+- `umi_missing`: `True` when no canonical UMI is available
+- `umi_mi`: raw `MI` tag when present (for posterity)
+
+Aggregated TSVs now include UMI summary metrics:
+- `umi_count`: unique non-empty UMIs per event after filtering
+- `umi_missing_read_count`: number of post-filter reads missing canonical UMI
+- `umi_coverage`: `1 - umi_missing_read_count / read_count`
 
 
 ## Development workflow

@@ -29,6 +29,13 @@ EXPECTED_EVENT_COLUMNS = [
     "extra_bases1",
     "extra_bases2",
 ]
+OPTIONAL_UMI_COLUMNS = [
+    "umi",
+    "umi_source_tag",
+    "umi_missing",
+    "umi_mi",
+]
+READ_EVENT_COLUMNS = EXPECTED_EVENT_COLUMNS + OPTIONAL_UMI_COLUMNS
 
 
 def load_events(events):
@@ -36,7 +43,15 @@ def load_events(events):
     if missing:
         missing_str = ", ".join(missing)
         raise ValueError(f"Missing expected columns: {missing_str}")
-    return events[EXPECTED_EVENT_COLUMNS].copy()
+    selected_columns = EXPECTED_EVENT_COLUMNS + [
+        col for col in OPTIONAL_UMI_COLUMNS if col in events.columns
+    ]
+    return events[selected_columns].copy()
+
+
+def _coerce_bool(series):
+    lowered = series.fillna("").astype(str).str.strip().str.lower()
+    return lowered.isin({"1", "true", "t", "yes", "y"})
 
 
 def clean_events(events):
@@ -54,6 +69,27 @@ def clean_events(events):
         "extra_bases2",
     ]:
         events[col] = pd.to_numeric(events[col], errors="coerce")
+
+    if "umi" not in events.columns:
+        events["umi"] = ""
+    else:
+        events["umi"] = events["umi"].fillna("").astype(str)
+
+    if "umi_source_tag" not in events.columns:
+        events["umi_source_tag"] = ""
+    else:
+        events["umi_source_tag"] = events["umi_source_tag"].fillna("").astype(str)
+
+    if "umi_missing" not in events.columns:
+        events["umi_missing"] = events["umi"] == ""
+    else:
+        events["umi_missing"] = _coerce_bool(events["umi_missing"]) | (events["umi"] == "")
+
+    if "umi_mi" not in events.columns:
+        events["umi_mi"] = ""
+    else:
+        events["umi_mi"] = events["umi_mi"].fillna("").astype(str)
+
     return events
 
 
@@ -69,6 +105,10 @@ def filter_events(events, min_mapq, min_match_length, max_extra_bases):
 
 
 def aggregate_events(events):
+    def count_non_empty_unique(values):
+        values = values.fillna("")
+        return int(values[values != ""].nunique())
+
     unique_events = (
         events.fillna("")
         .groupby(
@@ -88,6 +128,8 @@ def aggregate_events(events):
         .agg(
             read_count=("read_name", "count"),
             frag_count=("read_name", lambda x: x.nunique()),
+            umi_count=("umi", count_non_empty_unique),
+            umi_missing_read_count=("umi_missing", "sum"),
             mapq1_mean=("mapping_quality1", "mean"),
             match1_mean=("largest_match_length1", "mean"),
             mapq2_mean=("mapping_quality2", "mean"),
@@ -97,6 +139,14 @@ def aggregate_events(events):
         )
         .reset_index()
     )
+    unique_events["umi_missing_read_count"] = (
+        pd.to_numeric(unique_events["umi_missing_read_count"], errors="coerce")
+        .fillna(0)
+        .astype(int)
+    )
+    unique_events["umi_coverage"] = (
+        1 - (unique_events["umi_missing_read_count"] / unique_events["read_count"])
+    ).clip(lower=0, upper=1)
     return unique_events
 
 

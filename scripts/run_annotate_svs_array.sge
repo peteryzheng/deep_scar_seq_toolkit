@@ -1,0 +1,91 @@
+#!/bin/bash -l
+#$ -N annotate_svs
+#$ -cwd
+#$ -l h_rt=02:00:00
+#$ -l h_vmem=8G
+#$ -pe smp 1
+#$ -t 1-19
+
+set -euo pipefail
+
+# Example:
+#   qsub scripts/run_annotate_svs_array.sge chr2 1153081 5
+
+if [[ $# -lt 3 ]]; then
+  echo "Usage: qsub -t 1-N $0 <chrom> <breakpoint> <window>" >&2
+  exit 2
+fi
+
+CHROM="$1"
+BREAKPOINT="$2"
+WINDOW="$3"
+
+# Set fixed BAM input location for this cluster.
+BAM_DIR="/mnt/storage/dept/medonc/beroukhim/Narmen_Azazmeh/DeepScarseq_001/BAMs"
+RUN_DATE="$(date +%m%d%y)"
+OUT_DIR="/mnt/storage/dept/medonc/beroukhim/youyun/nti/code/deep_scar_seq_toolkit/data/dss_${RUN_DATE}"
+CONDA_ENV="dss"
+UMI_TAGS="RX,UR"
+SCRIPT="/mnt/storage/dept/medonc/beroukhim/youyun/nti/code/deep_scar_seq_toolkit/scripts/annotate_svs.py"
+
+mkdir -p "${OUT_DIR}"
+
+if command -v module >/dev/null 2>&1; then
+  module load miniforge3 || true
+fi
+
+shopt -s nullglob
+BAMS=("${BAM_DIR}"/*.bam)
+if [[ ${#BAMS[@]} -eq 0 ]]; then
+  echo "No BAMs found in ${BAM_DIR}" >&2
+  exit 1
+fi
+
+if [[ -z "${SGE_TASK_ID:-}" ]]; then
+  echo "SGE_TASK_ID is not set. This script is meant for an SGE job array." >&2
+  exit 1
+fi
+
+if ! [[ "${SGE_TASK_ID}" =~ ^[0-9]+$ ]]; then
+  echo "SGE_TASK_ID must be a positive integer, got: ${SGE_TASK_ID}" >&2
+  exit 1
+fi
+
+TASK_INDEX=$((SGE_TASK_ID - 1))
+if (( TASK_INDEX < 0 || TASK_INDEX >= ${#BAMS[@]} )); then
+  echo "Array index ${SGE_TASK_ID} (0-based ${TASK_INDEX}) out of range for ${#BAMS[@]} BAMs." >&2
+  exit 1
+fi
+
+BAM="${BAMS[$TASK_INDEX]}"
+BASENAME="$(basename "${BAM}" .bam)"
+OUT_FILE="${OUT_DIR}/${BASENAME}.${CHROM}_${BREAKPOINT}_w${WINDOW}.annotated.tsv"
+
+start_ts=$(date +%s)
+start_human=$(date)
+
+bam_bytes=$(stat -c%s "${BAM}")
+bam_size_human=$(du -h "${BAM}" | awk '{print $1}')
+
+echo "Job start: ${start_human}"
+echo "SGE task id: ${SGE_TASK_ID}"
+echo "BAM: ${BAM}"
+echo "BAM size: ${bam_size_human} (${bam_bytes} bytes)"
+echo "Output: ${OUT_FILE}"
+echo "UMI tags: ${UMI_TAGS}"
+
+time conda run -n "${CONDA_ENV}" python3 "${SCRIPT}" \
+  --bam "${BAM}" \
+  --chrom "${CHROM}" \
+  --breakpoint "${BREAKPOINT}" \
+  --window "${WINDOW}" \
+  --umi-tags "${UMI_TAGS}" \
+  --pysam_quiet \
+  --out "${OUT_FILE}"
+
+end_ts=$(date +%s)
+end_human=$(date)
+elapsed=$(( end_ts - start_ts ))
+
+printf "Job end: %s\n" "${end_human}"
+printf "Elapsed: %s seconds\n" "${elapsed}"
