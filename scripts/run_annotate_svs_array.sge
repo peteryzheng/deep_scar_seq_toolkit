@@ -71,14 +71,45 @@ echo "BAM size: ${bam_size_human} (${bam_bytes} bytes)"
 echo "Output: ${OUT_FILE}"
 echo "UMI tags: ${UMI_TAGS}"
 
-time conda run -n "${CONDA_ENV}" python3 "${SCRIPT}" \
-  --bam "${BAM}" \
-  --chrom "${CHROM}" \
-  --breakpoint "${BREAKPOINT}" \
-  --window "${WINDOW}" \
-  --umi-tags "${UMI_TAGS}" \
-  --pysam_quiet \
-  --out "${OUT_FILE}"
+# Initialize conda from the explicit Miniforge installation you provided
+MINIFORGE_PATH="/mnt/storage/dept/medonc/beroukhim/youyun/util/miniforge3"
+if [ -f "${MINIFORGE_PATH}/etc/profile.d/conda.sh" ]; then
+  . "${MINIFORGE_PATH}/etc/profile.d/conda.sh"
+else
+  echo "Warning: ${MINIFORGE_PATH}/etc/profile.d/conda.sh not found; will try Miniforge env python directly." >&2
+fi
+
+if command -v conda >/dev/null 2>&1; then
+  time conda run -n "${CONDA_ENV}" python3 "${SCRIPT}" \
+    --bam "${BAM}" \
+    --chrom "${CHROM}" \
+    --breakpoint "${BREAKPOINT}" \
+    --window "${WINDOW}" \
+    --umi-tags "${UMI_TAGS}" \
+    --pysam_quiet \
+    --out "${OUT_FILE}"
+else
+  # Fallback: try the Miniforge env python only
+  PY=
+  if [ -x "${MINIFORGE_PATH}/envs/${CONDA_ENV}/bin/python" ]; then
+    PY="${MINIFORGE_PATH}/envs/${CONDA_ENV}/bin/python"
+  fi
+
+  if [ -n "${PY}" ]; then
+    time "${PY}" "${SCRIPT}" \
+      --bam "${BAM}" \
+      --chrom "${CHROM}" \
+      --breakpoint "${BREAKPOINT}" \
+      --window "${WINDOW}" \
+      --umi-tags "${UMI_TAGS}" \
+      --pysam_quiet \
+      --out "${OUT_FILE}"
+  else
+    echo "Error: conda not found and Miniforge env '${CONDA_ENV}' python not found at ${MINIFORGE_PATH}/envs/${CONDA_ENV}." >&2
+    echo "Ensure the Miniforge installation and the '${CONDA_ENV}' environment exist on the compute nodes." >&2
+    exit 1
+  fi
+fi
 
 end_ts=$(date +%s)
 end_human=$(date)
