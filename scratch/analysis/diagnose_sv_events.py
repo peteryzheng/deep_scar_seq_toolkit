@@ -989,6 +989,69 @@ def write_interactive_plots(
             sample_fig.update_yaxes(ticksuffix="%")
         figures.append((f"Diagnosis Summary: {pretty} by Sample", summary_text, sample_fig))
 
+    # Singleton sensitivity to aliquot depth threshold.
+    singleton_thresholds = [1, 10, 20]
+    singleton_rows: list[dict[str, object]] = []
+    for min_events in singleton_thresholds:
+        subset = focus_burden[focus_burden["unique_events"] >= min_events].copy()
+        if subset.empty:
+            continue
+        grp = (
+            subset.groupby("sample_group", as_index=False, observed=True)
+            .agg(
+                mean_singleton_frac=("singleton_frac", "mean"),
+                median_singleton_frac=("singleton_frac", "median"),
+                n_aliquots=("aliquot", "nunique"),
+            )
+        )
+        grp["min_events"] = min_events
+        singleton_rows.append(grp)
+    if singleton_rows:
+        singleton_sensitivity = pd.concat(singleton_rows, ignore_index=True)
+        sens_fig = go.Figure()
+        for group in GROUP_ORDER:
+            sub = singleton_sensitivity[singleton_sensitivity["sample_group"] == group]
+            if sub.empty:
+                continue
+            sens_fig.add_trace(
+                go.Scatter(
+                    x=sub["min_events"],
+                    y=sub["mean_singleton_frac"] * 100.0,
+                    mode="lines+markers+text",
+                    line={"color": palette.get(group, "#7f7f7f"), "width": 3},
+                    marker={"size": 10},
+                    text=[f"n={int(n)}" for n in sub["n_aliquots"]],
+                    textposition="top center",
+                    name=group,
+                    legendgroup=group,
+                    hovertemplate=(
+                        "group=%{fullData.name}<br>min_events=%{x}"
+                        "<br>mean_singleton=%{y:.2f}%<br>%{text}<extra></extra>"
+                    ),
+                )
+            )
+        sens_fig.update_layout(
+            title=f"Singleton fraction sensitivity to minimum events per aliquot ({focus_cut_site})",
+            xaxis_title="Minimum unique events per aliquot filter",
+            yaxis_title="Mean singleton fraction across retained aliquots (%)",
+        )
+        sens_fig.update_xaxes(
+            tickmode="array",
+            tickvals=singleton_thresholds,
+            ticktext=[str(x) for x in singleton_thresholds],
+        )
+        sens_fig.update_yaxes(range=[0, 100], ticksuffix="%")
+        sens_text = "no_cut vs inner_cut (mean singleton %, by filter): "
+        bits = []
+        for min_events in singleton_thresholds:
+            block = singleton_sensitivity[singleton_sensitivity["min_events"] == min_events]
+            no_cut = block.loc[block["sample_group"] == "no_cut", "mean_singleton_frac"]
+            inner = block.loc[block["sample_group"] == "inner_cut", "mean_singleton_frac"]
+            if len(no_cut) and len(inner):
+                bits.append(f">={min_events}: {no_cut.iloc[0]*100:.1f}% vs {inner.iloc[0]*100:.1f}%")
+        sens_text += " | ".join(bits) if bits else "insufficient paired group data"
+        figures.append(("Singleton Sensitivity by Aliquot Depth", sens_text, sens_fig))
+
     # Additional frag-count distribution diagnostics (beyond means).
     focus_frag = focus_master.copy()
     focus_frag["frag_count"] = pd.to_numeric(focus_frag["frag_count"], errors="coerce")
@@ -1291,6 +1354,7 @@ def write_interactive_plots(
         "Diagnosis Summary: Mean Frag Count by Sample": "Per-sample distribution of aliquot-level mean fragment support. Box shows sample spread; points are individual aliquots.",
         "Diagnosis Summary: Support (Singleton Fraction)": "Fraction of events supported by exactly one fragment. Higher values indicate more singleton-dominated profiles.",
         "Diagnosis Summary: Singleton Fraction by Sample": "Per-sample distribution of aliquot-level singleton burden. Box shows sample spread; points are individual aliquots.",
+        "Singleton Sensitivity by Aliquot Depth": "Sensitivity analysis of singleton fraction after filtering out low-event aliquots. This helps separate true group shifts from low-depth inflation.",
         "Frag Count Distribution (Event-level ECDF)": "Cumulative event-level frag_count distribution by group. Separation indicates differences in support profile shape, not just mean.",
         "Frag Count ECDF by Sample": "Event-level frag_count ECDF curves overlaid in one panel (one curve per sample, colored by sample group) for direct cross-sample comparison.",
         "Frag Count ECDF by Aliquot": "Event-level frag_count ECDF curves overlaid in one panel (one curve per aliquot, colored by sample group) for direct cross-aliquot comparison.",
@@ -1323,6 +1387,7 @@ def write_interactive_plots(
                 "Diagnosis Summary: Mean Frag Count by Sample": 560,
                 "Diagnosis Summary: Support (Singleton Fraction)": 620,
                 "Diagnosis Summary: Singleton Fraction by Sample": 560,
+                "Singleton Sensitivity by Aliquot Depth": 560,
                 "Frag Count Distribution (Event-level ECDF)": 560,
                 "Frag Count ECDF by Sample": 760,
                 "Frag Count ECDF by Aliquot": 900,

@@ -8,11 +8,10 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
-# %%
 #%%
 input_dir = Path('../../data/dss_020226_events/')
 files = sorted(input_dir.rglob('*chr2_1152626_w5*.aggregated.tsv'))
-# files = sorted(input_dir.rglob('*chr2_1153052_w5*.tsv'))
+# files = sorted(input_dir.rglob('*chr2_1153052_w5*.aggregated.tsv'))
 # %%
 def load_events(files):
     records = []
@@ -55,20 +54,44 @@ plt.tight_layout()
 plt.show()
 
 # %%
-# can we also do the above graph but make separate plots for each aliquot?
-g = sns.FacetGrid(events, col="aliquot", col_wrap=8, sharex=True, sharey=True)
-g.map_dataframe(
-    sns.histplot,
-    x="frag_count",
-    bins=30,
-    kde=False,
+# violin plot of fragment counts by aliquot, with x axis being aliquot and y axis being fragment count
+# violin plot with normal y axis and no variance estimation, just the violins
+plt.figure(figsize=(12, 6))
+sns.boxplot(
+    data=events,
+    x="aliquot",
+    y="frag_count",
+    color="lightgray",
+    showfliers=False,
 )
-g.set(yscale="log")
-g.set_axis_labels("Fragment Count per SV Event", "Number of SV Events (log scale)")
-g.fig.suptitle("Distribution of Fragment Counts per SV Event by Aliquot", y=1.02)
+# y axis normal scale
+plt.yscale("linear")
+plt.xlabel("Aliquot")
+plt.ylabel("Fragment Count per SV Event")
+plt.title("Fragment Count Distribution by Aliquot")
+plt.xticks(rotation=90)
 plt.tight_layout()
 plt.show()
 
+#%%
+# is there other interesting visualization we can do with these events? I am interested in seeing if any aliquots have weird frag count patterns
+# maybe a linear model of frag count by aliquot, or a heatmap of frag count by aliquot and sv type
+# heatmap of average fragment count by aliquot and sv type
+pivot = events.pivot_table(
+    index="aliquot",
+    columns="sv_type",
+    values="frag_count",
+    aggfunc="mean",
+    fill_value=0
+)
+plt.figure(figsize=(12, 8))
+sns.heatmap(pivot, annot=True, fmt=".1f", cmap="YlGnBu")
+plt.xlabel("SV Type")
+plt.ylabel("Aliquot")
+plt.title("Average Fragment Count by Aliquot and SV Type")
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
 # %%
 # breakpoint2 is within 1000bp of 9029104 on chr2
 # and the event is a tandem duplication (DUP)
