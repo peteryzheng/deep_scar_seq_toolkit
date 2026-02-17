@@ -10,6 +10,8 @@
 
 set -euo pipefail
 
+source /home/yz762/.zshrc
+
 # Example:
 #   qsub scripts/run_annotate_svs_array.sge chr2 1153081 5
 
