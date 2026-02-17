@@ -2,7 +2,7 @@
 #$ -N annotate_svs
 #$ -cwd
 #$ -l h_rt=02:00:00
-#$ -l h_vmem=8G
+#$ -l h_vmem=16G
 #$ -pe smp 1
 #$ -t 1-19
 #$ -o /mnt/storage/dept/medonc/beroukhim/youyun/nti/code/deep_scar_seq_toolkit/scripts/outputs/$JOB_NAME_$JOB_ID_$TASK_ID.out
