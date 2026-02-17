@@ -5,6 +5,8 @@
 #$ -l h_vmem=8G
 #$ -pe smp 1
 #$ -t 1-19
+#$ -o /mnt/storage/dept/medonc/beroukhim/youyun/nti/code/deep_scar_seq_toolkit/scripts/outputs/$JOB_NAME_$JOB_ID_$TASK_ID.out
+#$ -e /mnt/storage/dept/medonc/beroukhim/youyun/nti/code/deep_scar_seq_toolkit/scripts/outputs/$JOB_NAME_$JOB_ID_$TASK_ID.err
 
 set -euo pipefail
 
@@ -29,10 +31,6 @@ UMI_TAGS="RX,UR"
 SCRIPT="/mnt/storage/dept/medonc/beroukhim/youyun/nti/code/deep_scar_seq_toolkit/scripts/annotate_svs.py"
 
 mkdir -p "${OUT_DIR}"
-
-if command -v module >/dev/null 2>&1; then
-  module load miniforge3 || true
-fi
 
 shopt -s nullglob
 BAMS=("${BAM_DIR}"/*.bam)
