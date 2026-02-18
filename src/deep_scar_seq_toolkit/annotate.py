@@ -443,12 +443,22 @@ def reverse_complement(seq):
 
 def junctional_features(row):
     primary_seq = row["query_sequence"]
+    if not isinstance(primary_seq, str):
+        primary_seq = "" if pd.isna(primary_seq) else str(primary_seq)
     read_length = len(primary_seq)
     primary_aln = 2 if row["is_supplementary1"] else 1
 
-    match_sum = row["largest_match_length1"] + row["largest_match_length2"]
-    mh_length = max(0, match_sum - read_length)
-    ins_length = max(0, read_length - match_sum)
+    def safe_non_negative_int(value):
+        numeric = pd.to_numeric(value, errors="coerce")
+        if pd.isna(numeric) or numeric < 0:
+            return 0
+        return int(numeric)
+
+    match_length1 = safe_non_negative_int(row["largest_match_length1"])
+    match_length2 = safe_non_negative_int(row["largest_match_length2"])
+    match_sum = match_length1 + match_length2
+    mh_length = max(0, int(match_sum - read_length))
+    ins_length = max(0, int(read_length - match_sum))
 
     primary_seq_strand = (
         primary_seq
@@ -456,9 +466,11 @@ def junctional_features(row):
         else reverse_complement(primary_seq)
     )
     target_clip_side = row["clip_side1"]
-    target_match_length = row["largest_match_length1"]
+    target_match_length = match_length1
 
     def slice_near_break(seq, match_len, clip_side, length, kind):
+        match_len = safe_non_negative_int(match_len)
+        length = safe_non_negative_int(length)
         if length <= 0:
             return ""
         if clip_side == "right":
