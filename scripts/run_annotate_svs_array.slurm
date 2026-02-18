@@ -23,7 +23,7 @@ WINDOW="$3"
 
 BAM_DIR="/data/beroukhim1/youyun/nti/data/DSS/run_260106"
 SCRIPT="/PHShome/yz762/DSS/code/deep_scar_seq_toolkit/scripts/annotate_svs.py"
-RUN_DATE="${DSS_RUN_DATE:-$(date +%m%d%y)}"
+RUN_DATE="${DSS_RUN_DATE:-$(date +%m%d%y_%H%M)}"
 OUT_DIR="/scratch/y/yz762/DSS/dss_${RUN_DATE}"
 
 mkdir -p "${OUT_DIR}"

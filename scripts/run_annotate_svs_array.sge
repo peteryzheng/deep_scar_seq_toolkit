@@ -24,7 +24,8 @@ WINDOW="$3"
 
 # Set fixed BAM input location for this cluster.
 BAM_DIR="/mnt/storage/dept/medonc/beroukhim/Narmen_Azazmeh/DeepScarseq_001/BAMs"
-RUN_DATE="$(date +%m%d%y)"
+BAM_DIR="/mnt/storage/dept/medonc/beroukhim/youyun/nti/data/DSS/run_260106"
+RUN_DATE="$(date +%m%d%y_%H%M)"
 OUT_DIR="/mnt/storage/dept/medonc/beroukhim/youyun/nti/code/deep_scar_seq_toolkit/data/dss_${RUN_DATE}"
 CONDA_ENV="dss"
 UMI_TAGS="RX,UR"
