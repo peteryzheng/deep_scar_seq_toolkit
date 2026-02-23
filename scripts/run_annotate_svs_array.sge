@@ -2,7 +2,7 @@
 #$ -N annotate_svs
 #$ -cwd
 #$ -l h_rt=02:00:00
-#$ -l h_vmem=16G
+#$ -l h_vmem=32G
 #$ -pe smp 1
 #$ -t 1-19
 #$ -o /mnt/storage/dept/medonc/beroukhim/youyun/nti/code/deep_scar_seq_toolkit/scripts/outputs/$JOB_NAME_$JOB_ID_$TASK_ID.out
@@ -11,10 +11,10 @@
 set -euo pipefail
 
 # Example:
-#   qsub -t 1-19 scripts/run_annotate_svs_array.sge chr2 1153081 5 cohortA /path/to/bams
+#   qsub -t 1-19 scripts/run_annotate_svs_array.sge chr2 1153081 5 cohortA 022326_1030 /path/to/bams
 
-if [[ $# -lt 5 ]]; then
-  echo "Usage: qsub -t 1-N $0 <chrom> <breakpoint> <window> <cohort_name> <bam_dir>" >&2
+if [[ $# -lt 6 ]]; then
+  echo "Usage: qsub -t 1-N $0 <chrom> <breakpoint> <window> <cohort_name> <run_tag> <bam_dir>" >&2
   exit 2
 fi
 
@@ -22,10 +22,15 @@ CHROM="$1"
 BREAKPOINT="$2"
 WINDOW="$3"
 COHORT_NAME="$4"
-BAM_DIR="$5"
+RUN_TAG="$5"
+BAM_DIR="$6"
 
-RUN_DATE="$(date +%m%d%y_%H%M)"
-OUT_DIR="/mnt/storage/dept/medonc/beroukhim/youyun/nti/code/deep_scar_seq_toolkit/data/dss_${COHORT_NAME}_${RUN_DATE}"
+if ! [[ "${RUN_TAG}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  echo "Invalid run_tag '${RUN_TAG}'. Allowed characters: A-Z a-z 0-9 . _ -" >&2
+  exit 2
+fi
+
+OUT_DIR="/mnt/storage/dept/medonc/beroukhim/youyun/nti/code/deep_scar_seq_toolkit/data/dss_${COHORT_NAME}_${RUN_TAG}"
 CONDA_ENV="dss"
 UMI_TAGS="RX,UR"
 SCRIPT="/mnt/storage/dept/medonc/beroukhim/youyun/nti/code/deep_scar_seq_toolkit/scripts/annotate_svs.py"
@@ -80,6 +85,7 @@ echo "BAM: ${BAM}"
 echo "BAM dir: ${BAM_DIR}"
 echo "BAM size: ${bam_size_human} (${bam_bytes} bytes)"
 echo "Cohort: ${COHORT_NAME}"
+echo "Run tag: ${RUN_TAG}"
 echo "Output: ${OUT_FILE}"
 echo "UMI tags: ${UMI_TAGS}"
 
