@@ -11,25 +11,29 @@
 set -euo pipefail
 
 # Example:
-#   qsub scripts/run_annotate_svs_array.sge chr2 1153081 5
+#   qsub -t 1-19 scripts/run_annotate_svs_array.sge chr2 1153081 5 cohortA /path/to/bams
 
-if [[ $# -lt 3 ]]; then
-  echo "Usage: qsub -t 1-N $0 <chrom> <breakpoint> <window>" >&2
+if [[ $# -lt 5 ]]; then
+  echo "Usage: qsub -t 1-N $0 <chrom> <breakpoint> <window> <cohort_name> <bam_dir>" >&2
   exit 2
 fi
 
 CHROM="$1"
 BREAKPOINT="$2"
 WINDOW="$3"
+COHORT_NAME="$4"
+BAM_DIR="$5"
 
-# Set fixed BAM input location for this cluster.
-BAM_DIR="/mnt/storage/dept/medonc/beroukhim/Narmen_Azazmeh/DeepScarseq_001/BAMs"
-BAM_DIR="/mnt/storage/dept/medonc/beroukhim/youyun/nti/data/DSS/run_260106"
 RUN_DATE="$(date +%m%d%y_%H%M)"
-OUT_DIR="/mnt/storage/dept/medonc/beroukhim/youyun/nti/code/deep_scar_seq_toolkit/data/dss_${RUN_DATE}"
+OUT_DIR="/mnt/storage/dept/medonc/beroukhim/youyun/nti/code/deep_scar_seq_toolkit/data/dss_${COHORT_NAME}_${RUN_DATE}"
 CONDA_ENV="dss"
 UMI_TAGS="RX,UR"
 SCRIPT="/mnt/storage/dept/medonc/beroukhim/youyun/nti/code/deep_scar_seq_toolkit/scripts/annotate_svs.py"
+
+if [[ ! -d "${BAM_DIR}" ]]; then
+  echo "BAM directory does not exist: ${BAM_DIR}" >&2
+  exit 2
+fi
 
 mkdir -p "${OUT_DIR}"
 
@@ -38,6 +42,11 @@ for f in "${BAM_DIR}"/*.bam; do
   [ -e "$f" ] || break
   BAMS+=("$f")
 done
+
+if (( ${#BAMS[@]} == 0 )); then
+  echo "No BAM files found in directory: ${BAM_DIR}" >&2
+  exit 1
+fi
 
 if [[ -z "${SGE_TASK_ID:-}" ]]; then
   echo "SGE_TASK_ID is not set. This script is meant for an SGE job array." >&2
@@ -57,7 +66,7 @@ fi
 
 BAM="${BAMS[$TASK_INDEX]}"
 BASENAME="$(basename "${BAM}" .bam)"
-OUT_FILE="${OUT_DIR}/${BASENAME}.${CHROM}_${BREAKPOINT}_w${WINDOW}.annotated.tsv"
+OUT_FILE="${OUT_DIR}/${BASENAME}.${COHORT_NAME}.${CHROM}_${BREAKPOINT}_w${WINDOW}.annotated.tsv"
 
 start_ts=$(date +%s)
 start_human=$(date)
@@ -68,7 +77,9 @@ bam_size_human=$(du -h "${BAM}" | awk '{print $1}')
 echo "Job start: ${start_human}"
 echo "SGE task id: ${SGE_TASK_ID}"
 echo "BAM: ${BAM}"
+echo "BAM dir: ${BAM_DIR}"
 echo "BAM size: ${bam_size_human} (${bam_bytes} bytes)"
+echo "Cohort: ${COHORT_NAME}"
 echo "Output: ${OUT_FILE}"
 echo "UMI tags: ${UMI_TAGS}"
 
