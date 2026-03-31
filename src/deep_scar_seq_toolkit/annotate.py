@@ -15,6 +15,70 @@ from .config import (
 )
 
 
+ANNOTATED_COLUMNS = [
+    "read_name",
+    "read_number",
+    "chr1",
+    "breakpoint1",
+    "is_forward1",
+    "insert_size",
+    "is_supplementary1",
+    "mapping_quality1",
+    "cigar1",
+    "clip_side1",
+    "largest_clip_length1",
+    "largest_match_length1",
+    "extra_bases1",
+    "query_sequence",
+    "umi",
+    "umi_source_tag",
+    "umi_missing",
+    "umi_mi",
+    "is_duplicate",
+    "is_duplicate_raw",
+    "duplicate_source",
+    "chr2",
+    "start2",
+    "breakpoint2",
+    "is_forward2",
+    "mapping_quality2",
+    "cigar2",
+    "clip_side2",
+    "largest_clip_length2",
+    "largest_match_length2",
+    "extra_bases2",
+]
+ANNOTATED_MATE_COLUMNS = [
+    "chr_mate",
+    "start_mate",
+    "is_forward_mate",
+    "insert_size_mate",
+    "is_supplementary_mate",
+    "mapping_quality_mate",
+    "cigar_mate",
+]
+ANNOTATED_DERIVED_COLUMNS = [
+    "sv_type",
+    "mh_length",
+    "ins_length",
+    "mh_seq",
+    "ins_seq",
+    "extra_bases",
+]
+
+
+def get_annotated_columns(include_mate=DEFAULT_INCLUDE_MATE):
+    columns = ANNOTATED_COLUMNS.copy()
+    if include_mate:
+        columns.extend(ANNOTATED_MATE_COLUMNS)
+    columns.extend(ANNOTATED_DERIVED_COLUMNS)
+    return columns
+
+
+def empty_annotated_df(include_mate=DEFAULT_INCLUDE_MATE):
+    return pd.DataFrame(columns=get_annotated_columns(include_mate))
+
+
 def is_split(aln):
     return ((aln.has_tag("SA")) and (not aln.is_secondary))
 
@@ -544,7 +608,7 @@ def annotate_bam(
         umi_tag_priority,
     )
     if not alns:
-        return pd.DataFrame()
+        return empty_annotated_df(include_mate)
     filtered_alns_df = build_filtered_df(alns, include_mate)
     filtered_alns_df = add_sv_type(filtered_alns_df)
     filtered_alns_df = add_junctional_features(filtered_alns_df)

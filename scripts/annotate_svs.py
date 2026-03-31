@@ -72,13 +72,13 @@ def main(argv=None):
         pysam_quiet=args.pysam_quiet,
         umi_tag_priority=umi_tag_priority,
     )
-    if annotated.empty:
-        print("No split reads found near the specified breakpoint.")
-        return
     out_path = args.out if args.out.endswith(".tsv") else f"{args.out}.tsv"
     annotated.to_csv(out_path, sep="\t", index=False)
+    if annotated.empty:
+        print("No split reads found near the specified breakpoint.")
     print(f"Wrote {len(annotated)} rows to {out_path}")
-    print(annotated["sv_type"].value_counts())
+    if not annotated.empty:
+        print(annotated["sv_type"].value_counts())
 
 
 if __name__ == "__main__":
